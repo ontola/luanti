@@ -27,6 +27,7 @@
 #include <map>
 #include <memory>
 #include <unordered_map>
+#include "gamenight_controller.h"
 
 #ifndef _IRR_USE_SDL3_
 	// Backward compatibility for SDL2
@@ -324,6 +325,12 @@ private:
 	SDL_Window *Window;
 #if defined(_IRR_COMPILE_WITH_JOYSTICK_EVENTS_)
 	std::map<SDL_JoystickID, SDL_Gamepad*> gamepads;
+	GameNightControllerBinding couchController;
+	bool couchAccept(SDL_JoystickID id);
+	void couchHostStep();
+	GameNightHostFrame couchPrevious;
+	bool couchVisible=false, couchArmed=false;
+	void couchRelease(SDL_JoystickID id);
 #ifdef _IRR_USE_SDL3
 	SDL_JoystickID recentGamepadID = -1;
 #else

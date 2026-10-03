@@ -1,3 +1,4 @@
+#include "gamenight_controller.h"
 // Luanti
 // SPDX-License-Identifier: LGPL-2.1-or-later
 // Copyright (C) 2010-2013 celeron55, Perttu Ahola <celeron55@gmail.com>
@@ -224,6 +225,10 @@ bool MyEventReceiver::OnEvent(const SEvent &event)
 				g_settings->getU16("dpi_change_notifier") + 1);
 		return true;
 	}
+
+    // No shared mouse capture or keyboard movement in a controller-only viewport.
+    if(gamenightControllerMode() && (event.EventType==EET_KEY_INPUT_EVENT ||
+        (event.EventType==EET_MOUSE_INPUT_EVENT && !event.MouseInput.Simulated))) return true;
 
 	// This is separate from other keyboard handling so that it also works in menus.
 	if (event.EventType == EET_KEY_INPUT_EVENT) {

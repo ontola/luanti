@@ -1,3 +1,4 @@
+#include "gamenight_controller.h"
 // Luanti
 // SPDX-License-Identifier: LGPL-2.1-or-later
 // Copyright (C) 2010-2013 celeron55, Perttu Ahola <celeron55@gmail.com>
@@ -579,6 +580,7 @@ void Game::run()
 		updatePlayerControl(cam_view);
 
 		updatePauseState();
+		if(gamenightFramePath() && !gamenightHostFrame().active) m_is_paused=true;
 		if (m_is_paused)
 			dtime = 0.0f;
 
@@ -592,6 +594,11 @@ void Game::run()
 		processPlayerInteraction(dtime, m_game_ui->m_flags.show_hud);
 		updateFrame(&graph, &stats, dtime, cam_view);
 		updateProfilerGraphs(&graph);
+        // Acknowledge a rendered world frame, not merely a process/window launch.
+        if(const char *frame=gamenightFramePath()) {
+            static bool reported=false;
+            if(!reported) {std::ofstream(std::string(frame)+".ready") << "rendered\n";reported=true;}
+        }
 
 		if (m_does_lost_focus_pause_game && !device->isWindowFocused() && !isMenuActive()) {
 			m_game_formspec.showPauseMenu();
@@ -1380,7 +1387,7 @@ void Game::processUserInput(f32 dtime)
 	}
 
 	// Reset input if window not active or some menu is active
-	if (!device->isWindowActive() || isMenuActive() || guienv->hasFocus(gui_chat_console.get())) {
+	if ((!device->isWindowActive() && !gamenightControllerMode()) || isMenuActive() || guienv->hasFocus(gui_chat_console.get())) {
 		if (m_game_focused) {
 			m_game_focused = false;
 			infostream << "Game lost focus" << std::endl;
@@ -1946,7 +1953,13 @@ void Game::updateCameraDirection(CameraOrientation *cam, float dtime)
 	this results in duplicated input. To avoid that, we don't enable relative
 	mouse mode if we're in touchscreen mode. */
 	if (cur_control)
-		cur_control->setRelativeMode(!g_touchcontrols && !isMenuActive());
+		cur_control->setRelativeMode(!gamenightControllerMode() && !g_touchcontrols && !isMenuActive());
+
+    if (gamenightControllerMode()) {
+        if (cur_control) cur_control->setVisible(false);
+        if (!isMenuActive()) updateCameraOrientation(cam,dtime);
+        return;
+    }
 
 	if ((device->isWindowActive() && device->isWindowFocused()
 			&& !isMenuActive()) || input->isRandom()) {
@@ -2003,7 +2016,7 @@ void Game::updateCameraOrientation(CameraOrientation *cam, float dtime)
 		// User setting is already applied by TouchControls.
 		cam->camera_yaw   += g_touchcontrols->getYawChange()   * sens_scale;
 		cam->camera_pitch += g_touchcontrols->getPitchChange() * sens_scale;
-	} else {
+	} else if (!gamenightControllerMode()) {
 		v2s32 center(driver->getScreenSize().Width / 2, driver->getScreenSize().Height / 2);
 		v2s32 dist = input->getMousePos() - center;
 
@@ -2656,7 +2669,8 @@ void Game::updateSound(f32 dtime)
 			camera->getDirection(),
 			camera->getCameraNode()->getUpVector());
 
-	sound_volume_control(sound_manager.get(), device->isWindowActive());
+	sound_volume_control(sound_manager.get(), device->isWindowActive() || gamenightControllerMode());
+    if(gamenightFramePath() && !gamenightHostFrame().active) sound_manager->setListenerGain(0);
 
 	// Update sound maker
 	ClientMap &map = client->getEnv().getClientMap();

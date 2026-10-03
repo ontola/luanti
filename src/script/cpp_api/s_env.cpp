@@ -485,3 +485,11 @@ void ScriptApiEnv::triggerLBM(int id, MapBlock *block,
 
 	lua_pop(L, 1); // Pop error handler
 }
+
+void ScriptApiEnv::gamenight_Poll()
+{
+    SCRIPTAPI_PRECHECKHEADER
+    lua_getglobal(L, "core");
+    lua_getfield(L, -1, "gamenight_paused_callbacks");
+    if(lua_istable(L, -1)) runCallbacks(0, RUN_CALLBACKS_MODE_FIRST);
+}

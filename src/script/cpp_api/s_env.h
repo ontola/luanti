@@ -19,6 +19,8 @@ class ScriptApiEnv : virtual public ScriptApiBase
 public:
 	// Called on environment step
 	void environment_Step(float dtime);
+	// Only the isolated GameNight mailbox runs while simulation is paused.
+	void gamenight_Poll();
 
 	// Called after generating a piece of map
 	void environment_OnGenerated(v3s16 minp, v3s16 maxp, u32 blockseed);

@@ -1,3 +1,4 @@
+#include "gamenight_controller.h"
 // Luanti
 // SPDX-License-Identifier: LGPL-2.1-or-later
 // Copyright (C) 2010-2013 celeron55, Perttu Ahola <celeron55@gmail.com>
@@ -739,7 +740,9 @@ void Server::AsyncRunStep(float dtime, bool initial_step)
 		m_env->reportMaxLagEstimate(max_lag);
 
 		// Step environment
-		m_env->step(dtime);
+		if(gamenightFramePath() && !gamenightHostFrame().active)
+            m_env->getScriptIface()->gamenight_Poll();
+        else m_env->step(dtime);
 	}
 
 	static const float map_timer_and_unload_dtime = 2.92;

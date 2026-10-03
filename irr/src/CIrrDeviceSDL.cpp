@@ -29,6 +29,13 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cassert>
+#ifdef _WIN32
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#include <windows.h>
+#include <fstream>
+#endif
 
 #ifdef _IRR_EMSCRIPTEN_PLATFORM_
 #include <emscripten.h>
@@ -464,6 +471,12 @@ CIrrDeviceSDL::CIrrDeviceSDL(const SIrrlichtCreationParameters &param) :
 		flags |= SDL_INIT_GAMEPAD;
 #endif
 
+#ifndef _IRR_USE_SDL3_
+        if (gamenightControllerMode() && !gamenightFramePath()) {
+            couchController.path=std::getenv("GAMENIGHT_CONTROLLER_PATH");
+            SDL_SetHint(SDL_HINT_JOYSTICK_ALLOW_BACKGROUND_EVENTS, "1");
+        }
+#endif
 #ifdef _IRR_USE_SDL3_
 		if (!SDL_Init(flags))
 #else
@@ -742,6 +755,7 @@ bool CIrrDeviceSDL::createWindowWithContext()
 #ifdef _IRR_USE_SDL3_
 	Window = SDL_CreateWindow("", Width, Height, SDL_Flags);
 #else
+	if(gamenightFramePath()) SDL_Flags=(SDL_Flags & ~SDL_WINDOW_SHOWN) | SDL_WINDOW_HIDDEN;
 	Window = SDL_CreateWindow("", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, Width, Height, SDL_Flags);
 #endif
 	if (!Window) {
@@ -749,6 +763,18 @@ bool CIrrDeviceSDL::createWindowWithContext()
 		return false;
 	}
 
+#ifndef _IRR_USE_SDL3_
+    if(gamenightControllerMode()) {
+        const char *seat=std::getenv("GAMENIGHT_COUCH_SEAT");
+        SDL_Rect bounds;
+        if(seat && (*seat=='0' || *seat=='1') && SDL_GetDisplayBounds(0,&bounds)==0) {
+            SDL_SetWindowFullscreen(Window,0);
+            SDL_SetWindowBordered(Window,SDL_FALSE);
+            SDL_SetWindowSize(Window,bounds.w/2,bounds.h);
+            SDL_SetWindowPosition(Window,bounds.x+(*seat-'0')*(bounds.w/2),bounds.y);
+        }
+    }
+#endif
 	Context = SDL_GL_CreateContext(Window);
 	if (!Context) {
 		os::Printer::log("Could not create context", SDL_GetError(), ELL_WARNING);
@@ -763,7 +789,7 @@ bool CIrrDeviceSDL::createWindowWithContext()
 #endif
 
 	updateSizeAndScale();
-	if (ScaleX != 1.0f || ScaleY != 1.0f) {
+	if (!gamenightControllerMode() && (ScaleX != 1.0f || ScaleY != 1.0f)) {
 		// The given window size is in pixels, not in screen coordinates.
 		// We can only do the conversion now since we didn't know the scale before.
 		SDL_SetWindowSize(Window,
@@ -825,6 +851,7 @@ static int wrap_PollEvent(SDL_Event *ev)
 bool CIrrDeviceSDL::run()
 {
 	os::Timer::tick();
+	if(gamenightFramePath()) couchHostStep();
 
 	SEvent irrevent;
 	SDL_Event SDL_event;
@@ -1149,9 +1176,23 @@ bool CIrrDeviceSDL::run()
 #else
 			auto id = SDL_event.cdevice.which;
 #endif
+			if(gamenightFramePath()) break; // Managed input comes only from host seat tokens.
 			if (auto gamepad = SDL_OpenGamepad(id); gamepad != nullptr) {
-				gamepads.emplace(id, gamepad);
-				recentGamepadID = id;
+#ifndef _IRR_USE_SDL3_
+                // ADDED uses a device index; all subsequent events use an instance ID.
+                id=SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(gamepad));
+                if (gamenightControllerMode()) {
+                    const char *path=SDL_GameControllerPath(gamepad);
+                    if (!couchController.attach(id,path ? path : "",false)) {
+                        SDL_CloseGamepad(gamepad);
+                        break;
+                    }
+                    os::Printer::log("GameNight controller bound",path,ELL_INFORMATION);
+                }
+#endif
+                gamepads.emplace(id, gamepad);
+                recentGamepadID = id;
+                if(gamenightControllerMode()) couchAccept(id);
 				os::Printer::log("Gamepad connected", SDL_GetGamepadName(gamepad), ELL_INFORMATION);
 				os::Printer::log("Gamepad type", SDL_GetGamepadStringForType(SDL_GetGamepadType(gamepad)), ELL_INFORMATION);
 				if (auto mapping = SDL_GetGamepadMapping(gamepad); mapping != nullptr) {
@@ -1172,8 +1213,9 @@ bool CIrrDeviceSDL::run()
 #endif
 			if (auto p = gamepads.find(id); p != gamepads.end()) {
 				os::Printer::log("Gamepad disconnected", SDL_GetGamepadName(p->second), ELL_INFORMATION);
-				SDL_CloseGamepad(p->second);
-				gamepads.erase(id);
+                if (gamenightControllerMode() && couchController.detach(id)) couchRelease(id);
+                SDL_CloseGamepad(p->second);
+                gamepads.erase(id);
 			}
 			break;
 		}
@@ -1188,6 +1230,7 @@ bool CIrrDeviceSDL::run()
 			auto id = SDL_event.cbutton.which;
 			irrevent.GamepadButtonEvent.Button = static_cast<GamepadButton>(SDL_event.cbutton.button);
 #endif
+			if (gamenightControllerMode() && !couchAccept(id)) break;
 			irrevent.GamepadButtonEvent.ID = id;
 			irrevent.GamepadButtonEvent.PressedDown = (SDL_event.type == SDL_EVENT_GAMEPAD_BUTTON_DOWN);
 			recentGamepadID = id;
@@ -1206,6 +1249,7 @@ bool CIrrDeviceSDL::run()
 			irrevent.GamepadAxisEvent.Axis = static_cast<GamepadAxis>(SDL_event.caxis.axis);
 			irrevent.GamepadAxisEvent.Value = SDL_event.caxis.value;
 #endif
+			if (gamenightControllerMode() && !couchAccept(id)) break;
 			irrevent.GamepadAxisEvent.ID = id;
 			recentGamepadID = id;
 			postEventFromUser(irrevent);
@@ -1220,6 +1264,42 @@ bool CIrrDeviceSDL::run()
 	} // end while
 
 	return !Close;
+}
+
+
+bool CIrrDeviceSDL::couchAccept(SDL_JoystickID id)
+{
+    if(gamenightFramePath()) return false;
+#ifndef _IRR_USE_SDL3_
+    auto p=gamepads.find(id);
+    if(p==gamepads.end()) return false;
+    bool neutral=true;
+    for(int b=0;b<SDL_CONTROLLER_BUTTON_MAX;b++)
+        neutral &= !SDL_GameControllerGetButton(p->second,static_cast<SDL_GameControllerButton>(b));
+    for(int a=0;a<SDL_CONTROLLER_AXIS_MAX;a++)
+        neutral &= std::abs(SDL_GameControllerGetAxis(p->second,static_cast<SDL_GameControllerAxis>(a)))<8000;
+    return couchController.accept(id,neutral);
+#else
+    return false; // This pinned couch adapter targets SDL2 only.
+#endif
+}
+void CIrrDeviceSDL::couchRelease(SDL_JoystickID id)
+{
+    // Neutralize every held action/cursor axis on disconnect.
+    SEvent e{};
+    e.EventType=EET_GAMEPAD_BUTTON_EVENT;
+    e.GamepadButtonEvent.ID=id;
+    e.GamepadButtonEvent.PressedDown=false;
+    for(int b=0;b<static_cast<int>(GamepadButton::COUNT);b++) {
+        e.GamepadButtonEvent.Button=static_cast<GamepadButton>(b);
+        postEventFromUser(e);
+    }
+    e.EventType=EET_GAMEPAD_AXIS_EVENT;
+    e.GamepadAxisEvent.ID=id;e.GamepadAxisEvent.Value=0;
+    for(int a=0;a<static_cast<int>(GamepadAxis::COUNT);a++) {
+        e.GamepadAxisEvent.Axis=static_cast<GamepadAxis>(a);
+        postEventFromUser(e);
+    }
 }
 
 void CIrrDeviceSDL::updateSizeAndScale()
@@ -1638,3 +1718,54 @@ void CIrrDeviceSDL::CCursorControl::initCursors()
 }
 
 #endif // _IRR_COMPILE_WITH_SDL_DEVICE_
+
+void CIrrDeviceSDL::couchHostStep() {
+#ifndef _IRR_USE_SDL3_
+    auto frame=gamenightHostFrame();
+    if(frame.active!=couchVisible) {
+        couchVisible=frame.active;couchArmed=false;
+        if(couchVisible) {SDL_ShowWindow(Window);SDL_RaiseWindow(Window);}
+        else SDL_HideWindow(Window);
+    }
+#ifdef _WIN32
+    // Two tiled borderless views cover the complete monitor together. Keep
+    // both above the taskbar only while a member of this owned pair has focus.
+    // Alt-Tab and Back release them; never pin the game above other apps.
+    static Uint32 focusCheck=0;
+    static bool above=false;
+    if(SDL_GetTicks()>=focusCheck) {
+        focusCheck=SDL_GetTicks()+100;
+        DWORD foreground=0;
+        GetWindowThreadProcessId(GetForegroundWindow(), &foreground);
+        bool owned=false;
+        if(const char *group=std::getenv("GAMENIGHT_COUCH_GROUP")) {
+            std::ifstream file(group); unsigned long pid;
+            while(file>>pid) if(pid==foreground) owned=true;
+        }
+        bool desired=frame.active && owned;
+        if(desired!=above) {above=desired;SDL_SetWindowAlwaysOnTop(Window,above?SDL_TRUE:SDL_FALSE);}
+    }
+#endif
+    // Back belongs to the resident lobby. Never echo its request or open Luanti's menu.
+    frame.buttons &= ~(1u<<6);
+    bool neutral=frame.buttons==0;
+    for(int axis:frame.axes) neutral &= std::abs(axis)<8000;
+    if(!frame.connected || !frame.active) couchArmed=false;
+    else if(neutral) couchArmed=true;
+    if(!couchArmed) {frame.buttons=0;frame.axes.fill(0);}
+    const int buttons[]={0,1,2,3,9,10,4,6,7,8,11,12,13,14};
+    SEvent e{};
+    e.EventType=EET_GAMEPAD_BUTTON_EVENT;e.GamepadButtonEvent.ID=0;
+    for(int i=0;i<14;i++) if((frame.buttons^couchPrevious.buttons)&(1u<<i)) {
+        e.GamepadButtonEvent.Button=static_cast<GamepadButton>(buttons[i]);
+        e.GamepadButtonEvent.PressedDown=(frame.buttons&(1u<<i))!=0;
+        postEventFromUser(e);
+    }
+    e.EventType=EET_GAMEPAD_AXIS_EVENT;e.GamepadAxisEvent.ID=0;
+    for(int i=0;i<6;i++) if(frame.axes[i]!=couchPrevious.axes[i]) {
+        e.GamepadAxisEvent.Axis=static_cast<GamepadAxis>(i);e.GamepadAxisEvent.Value=frame.axes[i];
+        postEventFromUser(e);
+    }
+    couchPrevious=frame;
+#endif
+}

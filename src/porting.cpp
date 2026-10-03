@@ -1,3 +1,4 @@
+#include "gamenight_controller.h"
 // Luanti
 // SPDX-License-Identifier: LGPL-2.1-or-later
 // Copyright (C) 2013 celeron55, Perttu Ahola <celeron55@gmail.com>
@@ -754,6 +755,9 @@ void initializePaths()
 	migrateCachePath();
 
 #endif // RUN_IN_PLACE
+	if(gamenightControllerMode()) {
+		if(auto isolated=getUserPathEnvVar()) {path_user=*isolated;path_cache=path_user+DIR_DELIM "cache";}
+	}
 
 	assert(!path_share.empty());
 	assert(!path_user.empty());

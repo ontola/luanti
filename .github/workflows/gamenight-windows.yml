@@ -1,0 +1,29 @@
+name: GameNight Windows engine
+on:
+  workflow_dispatch:
+  push:
+    branches: [gamenight-couch]
+    paths:
+      - 'irr/**'
+      - 'src/**'
+      - 'gamenight/**'
+      - '.github/workflows/gamenight-windows.yml'
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install build tools
+        run: sudo apt-get update && sudo apt-get install -y cmake g++ gettext unzip wget xz-utils
+      - name: Test controller routing and build
+        run: bash gamenight/build-windows.sh "$RUNNER_TEMP/luanti-couch"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: gamenight-luanti-windows
+          path: |
+            ${{ runner.temp }}/luanti-couch/build/build/luanti-*-win64.zip
+            ${{ runner.temp }}/luanti-couch/build/build/SHA256SUMS.txt
+            ${{ runner.temp }}/luanti-couch/SOURCE_REVISION.txt

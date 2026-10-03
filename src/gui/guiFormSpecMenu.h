@@ -415,6 +415,14 @@ protected:
 	video::SColor m_default_tooltip_color;
 
 private:
+    float m_couch_x=0, m_couch_y=0;
+    float m_couch_remainder_x=0, m_couch_remainder_y=0;
+    u32 m_couch_tick=0;
+    bool m_couch_pointer=false;
+    u32 m_couch_buttons=0;
+    void couchPointerEvent(EMOUSE_INPUT_EVENT event);
+    void couchPointerStep();
+
 	IFormSource               *m_form_src;
 	TextDest                  *m_text_dst;
 	std::string                m_last_formname;

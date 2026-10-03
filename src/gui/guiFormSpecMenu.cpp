@@ -1,3 +1,4 @@
+#include "gamenight_controller.h"
 // Luanti
 // SPDX-License-Identifier: LGPL-2.1-or-later
 // Copyright (C) 2013 celeron55, Perttu Ahola <celeron55@gmail.com>
@@ -3684,6 +3685,7 @@ void GUIFormSpecMenu::drawSelectedItem()
 
 void GUIFormSpecMenu::drawMenu()
 {
+    if(gamenightControllerMode()) couchPointerStep();
 	if (m_form_src) {
 		const std::string &newform = m_form_src->getForm();
 		if (newform != m_formspec_string) {
@@ -3913,6 +3915,12 @@ void GUIFormSpecMenu::drawMenu()
 		Draw dragged item stack
 	*/
 	drawSelectedItem();
+    if(gamenightControllerMode() && m_couch_pointer) {
+        const video::SColor color(255,255,222,105);
+        driver->draw2DRectangle(video::SColor(220,10,10,20),core::rect<s32>(m_pointer.X-3,m_pointer.Y-9,m_pointer.X+4,m_pointer.Y+10));
+        driver->draw2DRectangle(color,core::rect<s32>(m_pointer.X-1,m_pointer.Y-7,m_pointer.X+2,m_pointer.Y+8));
+        driver->draw2DRectangle(color,core::rect<s32>(m_pointer.X-7,m_pointer.Y-1,m_pointer.X+8,m_pointer.Y+2));
+    }
 
 	skin->setFont(old_font);
 }
@@ -4384,6 +4392,38 @@ bool GUIFormSpecMenu::remapClickOutside(const SEvent &event)
 
 bool GUIFormSpecMenu::preprocessEvent(const SEvent& event)
 {
+    if(gamenightControllerMode()) {
+        if(event.EventType==EET_GAMEPAD_AXIS_EVENT) {
+            const auto axis=event.GamepadAxisEvent.Axis;
+            float v=event.GamepadAxisEvent.Value/32767.f;
+            v=std::abs(v)<0.22f ? 0.f : (v>0 ? (v-.22f)/.78f : (v+.22f)/.78f);
+            if(axis==GamepadAxis::LEFTX) m_couch_x=v;
+            if(axis==GamepadAxis::LEFTY) m_couch_y=v;
+            return true;
+        }
+        if(event.EventType==EET_GAMEPAD_BUTTON_EVENT) {
+            const auto b=event.GamepadButtonEvent.Button;
+            const bool down=event.GamepadButtonEvent.PressedDown;
+            if(!m_couch_pointer) couchPointerStep();
+            if(b==GamepadButton::SOUTH || b==GamepadButton::WEST) {
+                const bool left=b==GamepadButton::SOUTH;
+                const u32 mask=left ? SDL_BUTTON_MASK(1) : SDL_BUTTON_MASK(3);
+                if(down) m_couch_buttons|=mask; else m_couch_buttons&=~mask;
+                couchPointerEvent(left ? (down ? EMIE_LMOUSE_PRESSED_DOWN : EMIE_LMOUSE_LEFT_UP)
+                    : (down ? EMIE_RMOUSE_PRESSED_DOWN : EMIE_RMOUSE_LEFT_UP));
+            } else if(down && (b==GamepadButton::EAST || b==GamepadButton::START || b==GamepadButton::BACK || b==GamepadButton::NORTH)) {
+                SEvent key{};key.EventType=EET_KEY_INPUT_EVENT;key.KeyInput.Key=KEY_ESCAPE;
+                key.KeyInput.PressedDown=true;OnEvent(key);
+            } else if(down && b>=GamepadButton::DPAD_UP && b<=GamepadButton::DPAD_RIGHT) {
+                const int step=std::max(12,m_btn_height);
+                m_pointer.X+=(b==GamepadButton::DPAD_RIGHT ? step : b==GamepadButton::DPAD_LEFT ? -step : 0);
+                m_pointer.Y+=(b==GamepadButton::DPAD_DOWN ? step : b==GamepadButton::DPAD_UP ? -step : 0);
+                couchPointerEvent(EMIE_MOUSE_MOVED);
+            }
+            return true;
+        }
+    }
+
 	// This must be done first so that GUIModalMenu can set m_pointer_type
 	// correctly.
 	if (GUIModalMenu::preprocessEvent(event))
@@ -5607,4 +5647,26 @@ double GUIFormSpecMenu::calculateImgsize(const parserData &data)
 	// Try to use the preferred imgsize, but if that's bigger than the maximum
 	// size, use the maximum size.
 	return std::min(prefer_imgsize, std::min(fitx_imgsize, fity_imgsize));
+}
+
+void GUIFormSpecMenu::couchPointerEvent(EMOUSE_INPUT_EVENT kind) {
+    auto size=Environment->getVideoDriver()->getScreenSize();
+    m_pointer.X=std::clamp(m_pointer.X,0,static_cast<int>(size.Width)-1);
+    m_pointer.Y=std::clamp(m_pointer.Y,0,static_cast<int>(size.Height)-1);
+    SEvent e{};e.EventType=EET_MOUSE_INPUT_EVENT;
+    e.MouseInput.Event=kind;e.MouseInput.X=m_pointer.X;e.MouseInput.Y=m_pointer.Y;
+    e.MouseInput.ButtonStates=m_couch_buttons;e.MouseInput.Simulated=true;
+    RenderingEngine::get_raw_device()->postEventFromUser(e);
+}
+void GUIFormSpecMenu::couchPointerStep() {
+    const auto now=porting::getTimeMs();
+    if(!m_couch_pointer) {m_pointer=AbsoluteRect.getCenter();m_couch_pointer=true;m_couch_tick=now;}
+    const float dt=std::min(0.05f,(now-m_couch_tick)/1000.f);m_couch_tick=now;
+    // Accumulate subpixel motion so a small stick movement does not disappear.
+
+    const float speed=Environment->getVideoDriver()->getScreenSize().Height*.7f;
+    m_couch_remainder_x+=m_couch_x*dt*speed;m_couch_remainder_y+=m_couch_y*dt*speed;
+    int dx=static_cast<int>(m_couch_remainder_x),dy=static_cast<int>(m_couch_remainder_y);
+    m_couch_remainder_x-=dx;m_couch_remainder_y-=dy;
+    if(dx || dy) {m_pointer.X+=dx;m_pointer.Y+=dy;couchPointerEvent(EMIE_MOUSE_MOVED);}
 }
