@@ -3,6 +3,8 @@
 // Copyright (C) 2010-2013 celeron55, Perttu Ahola <celeron55@gmail.com>
 
 #include "game_formspec.h"
+#include "gamenight_controller.h"
+#include "settings.h"
 
 #include "gettext.h"
 #include "nodemetadata.h"
@@ -86,6 +88,19 @@ struct HardcodedPauseFormspecHandler : public TextDest
 
 	void gotText(const StringMap &fields)
 	{
+        if (gamenightControllerMode()) {
+            if (fields.count("couch_slow")) g_settings->setFloat("joystick_frustum_sensitivity", 100);
+            if (fields.count("couch_normal")) g_settings->setFloat("joystick_frustum_sensitivity", 170);
+            if (fields.count("couch_fast")) g_settings->setFloat("joystick_frustum_sensitivity", 260);
+            auto invert = fields.find("couch_invert");
+            if (invert != fields.end())
+                g_settings->setBool("gamenight_invert_look", invert->second == "true");
+            if ((fields.count("couch_slow") || fields.count("couch_normal") ||
+                    fields.count("couch_fast") || invert != fields.end()) &&
+                    !g_settings_path.empty())
+                g_settings->updateConfigFile(g_settings_path.c_str());
+            return;
+        }
 		if (fields.find("btn_settings") != fields.end()) {
 			g_gamecallback->openSettings();
 			return;
@@ -452,6 +467,28 @@ void GameFormSpec::showPauseMenu()
 		}
 	}
 	os << ";]";
+
+    if (gamenightControllerMode()) {
+        os.str(""); os.clear();
+        const auto speed = g_settings->getFloat("joystick_frustum_sensitivity");
+        const char *choice = speed < 135 ? "Steady" : speed > 215 ? "Fast" : "Normal";
+        os << "formspec_version[4]size[10,8.2]"
+            << "bgcolor[#101923ee;true]style_type[button;bgcolor=#304759;textcolor=#ffffff]"
+            << "label[0.6,0.55;Controller menu]"
+            << "button_exit[0.6,1;8.8,0.8;btn_continue;Continue playing]"
+            << "label[0.6,2.2;Look speed: " << choice << "]"
+            << "button_exit[0.6,2.55;2.8,0.7;couch_slow;Steady]"
+            << "button_exit[3.6,2.55;2.8,0.7;couch_normal;Normal]"
+            << "button_exit[6.6,2.55;2.8,0.7;couch_fast;Fast]"
+            << "checkbox[0.6,3.65;couch_invert;Invert vertical look;"
+            << (g_settings->getBool("gamenight_invert_look") ? "true" : "false") << "]"
+            << "label[0.6,4.4;Left stick: Move     Right stick: Look]"
+            << "label[0.6,4.9;A: Jump     B: Sneak     X: Sprint     Y: Inventory]"
+            << "label[0.6,5.4;RT: Dig / attack     LT: Place / use]"
+            << "label[0.6,5.9;LB / RB: Choose hotbar item]"
+            << "label[0.6,6.65;Back / Select: Return to the GameNight lobby]"
+            << "label[0.6,7.25;The shared world keeps running while this menu is open.]";
+    }
 
 	/* Create menu */
 	/* Note: FormspecFormSource and LocalFormspecHandler  *

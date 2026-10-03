@@ -1,4 +1,5 @@
 #include "gamenight_controller.h"
+#include "gamenight_capture.h"
 // Luanti
 // SPDX-License-Identifier: LGPL-2.1-or-later
 // Copyright (C) 2010-2013 celeron55, Perttu Ahola <celeron55@gmail.com>
@@ -2038,10 +2039,12 @@ void Game::updateCameraOrientation(CameraOrientation *cam, float dtime)
 		cam->camera_yaw += input->getAxisValue(KeyType::CAMERA_YAW_LEFT) * rate;
 	if (input->isKeyDown(KeyType::CAMERA_YAW_RIGHT))
 		cam->camera_yaw -= input->getAxisValue(KeyType::CAMERA_YAW_RIGHT) * rate;
-	if (input->isKeyDown(KeyType::CAMERA_PITCH_UP))
-		cam->camera_pitch -= input->getAxisValue(KeyType::CAMERA_PITCH_UP) * rate;
-	if (input->isKeyDown(KeyType::CAMERA_PITCH_DOWN))
-		cam->camera_pitch += input->getAxisValue(KeyType::CAMERA_PITCH_DOWN) * rate;
+    const f32 pitch_rate = gamenightControllerMode() &&
+        g_settings->getBool("gamenight_invert_look") ? -rate : rate;
+    if (input->isKeyDown(KeyType::CAMERA_PITCH_UP))
+        cam->camera_pitch -= input->getAxisValue(KeyType::CAMERA_PITCH_UP) * pitch_rate;
+    if (input->isKeyDown(KeyType::CAMERA_PITCH_DOWN))
+        cam->camera_pitch += input->getAxisValue(KeyType::CAMERA_PITCH_DOWN) * pitch_rate;
 
 	cam->camera_pitch = rangelim(cam->camera_pitch, -90, 90);
 }
@@ -3724,6 +3727,7 @@ void Game::drawScene(ProfilerGraph *graph, RunStats *stats)
 	}
 
 	this->driver->endScene();
+    gamenightCaptureFrame(this->driver);
 
 	stats->drawtime = tt_draw.stop(true);
 	g_profiler->graphAdd("Draw scene [us]", stats->drawtime);

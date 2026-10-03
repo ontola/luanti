@@ -5724,7 +5724,14 @@ void GUIFormSpecMenu::couchPointerStep() {
         if(rect.isPointInside(m_pointer)) {m_couch_focus=rect;matched=true;break;}
     }
     if(!matched) {
-        m_pointer=targets.front().getCenter();m_couch_focus=targets.front();
+        m_couch_focus=targets.front();
+        // Open on the main inventory, so common actions need fewer presses.
+        for (auto *list : m_inventorylists) {
+            if (!list->isTrulyVisible() || list->getListname() != "main") continue;
+            auto slots = list->getControllerSlots();
+            if (!slots.empty()) {m_couch_focus=slots.front();break;}
+        }
+        m_pointer=m_couch_focus.getCenter();
         m_couch_pointer=true;couchPointerEvent(EMIE_MOUSE_MOVED);
     }
     int dx=(m_couch_dpad&8 ? 1:0)-(m_couch_dpad&4 ? 1:0);
