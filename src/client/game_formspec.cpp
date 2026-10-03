@@ -480,6 +480,7 @@ void GameFormSpec::showPauseMenu()
             << "button_exit[0.6,2.55;2.8,0.7;couch_slow;Steady]"
             << "button_exit[3.6,2.55;2.8,0.7;couch_normal;Normal]"
             << "button_exit[6.6,2.55;2.8,0.7;couch_fast;Fast]"
+            << "style_type[checkbox;textcolor=#101923]"
             << "checkbox[0.6,3.65;couch_invert;Invert vertical look;"
             << (g_settings->getBool("gamenight_invert_look") ? "true" : "false") << "]"
             << "label[0.6,4.4;Left stick: Move     Right stick: Look]"

@@ -35,7 +35,14 @@ inline void gamenightCaptureFrame(video::IVideoDriver *driver) {
     std::ostringstream file;
     file << directory << "/seat-" << seat << "-" << std::setfill('0')
         << std::setw(5) << frame << ".jpg";
-    const bool saved = driver->writeImageToFile(raw, file.str().c_str(), 95);
+    const auto size = raw->getDimension();
+    const unsigned width = size.Width > 960 ? 960 : size.Width;
+    auto *scaled = driver->createImage(video::ECF_R8G8B8,
+        {width, size.Height * width / size.Width});
+    if (!scaled) {raw->drop();return;}
+    raw->copyToScaling(scaled);
+    const bool saved = driver->writeImageToFile(scaled, file.str().c_str(), 95);
+    scaled->drop();
     raw->drop();
     if (!saved) return;
     std::ofstream log(directory + "/seat-" + seat + ".csv", std::ios::app);
