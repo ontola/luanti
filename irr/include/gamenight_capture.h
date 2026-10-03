@@ -25,6 +25,10 @@ inline void gamenightCaptureFrame(video::IVideoDriver *driver) {
     std::string directory;
     if (!std::getline(control, directory) || directory.empty()) return;
     if (!directory.empty() && directory.back() == '\r') directory.pop_back();
+    std::string selected;
+    std::getline(control, selected);
+    if (!selected.empty() && selected.back() == '\r') selected.pop_back();
+    if (!selected.empty() && selected != seat) return;
     static std::string previous;
     static unsigned frame = 0;
     static auto start = now;
