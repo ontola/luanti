@@ -9,14 +9,14 @@ The `gamenight-couch` branch is based on upstream Luanti 5.17.0
 - Two Windows clients in borderless side-by-side views.
 - Independent controller binding, neutral-state arming, and hotplug handling.
 - Host-routed controller frames with freshness checks and background camera input.
-- Controller cursor for inventory forms.
+- Directional D-pad/stick focus for menus and inventory, with A/B actions.
 - Shared pause support for the local world and hidden/muted client views.
 - Window grouping that yields when the user switches to another application.
 
 Mineclonia and the GameNight adapter are separate components. This repository
 contains the engine changes, not a new Mineclonia game fork. GameNight
 integration currently lives in
-[the public adapter](https://github.com/ontola/gamenight/tree/main/examples/mineclonia).
+[the maintained adapter](https://github.com/ontola/gamenight-mineclonia).
 
 ## Build and test
 
