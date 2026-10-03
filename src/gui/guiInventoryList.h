@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <vector>
 #include "inventorymanager.h"
 #include <IGUIElement.h>
 #include <IGUIEnvironment.h>
@@ -106,6 +107,8 @@ public:
 
 	// returns -1 if no item is at pos p
 	s32 getItemIndexAtPos(v2s32 p) const;
+
+    std::vector<core::rect<s32>> getControllerSlots() const;
 
 private:
 	InventoryManager *m_invmgr;

@@ -416,10 +416,13 @@ protected:
 
 private:
     float m_couch_x=0, m_couch_y=0;
-    float m_couch_remainder_x=0, m_couch_remainder_y=0;
-    u32 m_couch_tick=0;
-    bool m_couch_pointer=false;
+    int m_couch_last_x=0, m_couch_last_y=0;
+    u32 m_couch_repeat=0, m_couch_dpad=0;
+    bool m_couch_pointer=false, m_couch_shift=false;
     u32 m_couch_buttons=0;
+    core::rect<s32> m_couch_focus;
+    std::vector<core::rect<s32>> couchTargets();
+    void couchMoveFocus(int dx,int dy);
     void couchPointerEvent(EMOUSE_INPUT_EVENT event);
     void couchPointerStep();
 

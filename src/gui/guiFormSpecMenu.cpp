@@ -1,3 +1,4 @@
+#include "gamenight_navigation.h"
 #include "gamenight_controller.h"
 // Luanti
 // SPDX-License-Identifier: LGPL-2.1-or-later
@@ -3917,9 +3918,23 @@ void GUIFormSpecMenu::drawMenu()
 	drawSelectedItem();
     if(gamenightControllerMode() && m_couch_pointer) {
         const video::SColor color(255,255,222,105);
-        driver->draw2DRectangle(video::SColor(220,10,10,20),core::rect<s32>(m_pointer.X-3,m_pointer.Y-9,m_pointer.X+4,m_pointer.Y+10));
-        driver->draw2DRectangle(color,core::rect<s32>(m_pointer.X-1,m_pointer.Y-7,m_pointer.X+2,m_pointer.Y+8));
-        driver->draw2DRectangle(color,core::rect<s32>(m_pointer.X-7,m_pointer.Y-1,m_pointer.X+8,m_pointer.Y+2));
+        auto r=m_couch_focus;
+        const int border=3;
+        driver->draw2DRectangle(color,{r.UpperLeftCorner.X-border,r.UpperLeftCorner.Y-border,r.LowerRightCorner.X+border,r.UpperLeftCorner.Y});
+        driver->draw2DRectangle(color,{r.UpperLeftCorner.X-border,r.LowerRightCorner.Y,r.LowerRightCorner.X+border,r.LowerRightCorner.Y+border});
+        driver->draw2DRectangle(color,{r.UpperLeftCorner.X-border,r.UpperLeftCorner.Y,r.UpperLeftCorner.X,r.LowerRightCorner.Y});
+        driver->draw2DRectangle(color,{r.LowerRightCorner.X,r.UpperLeftCorner.Y,r.LowerRightCorner.X+border,r.LowerRightCorner.Y});
+        auto size=driver->getScreenSize();
+        auto *font=skin->getFont();
+        if(font) {
+            const wchar_t *hint=m_inventorylists.empty()
+                ? L"D-pad / Stick: Navigate     A: Select     B: Back"
+                : L"D-pad / Stick: Navigate    A: Pick / Place    X: Split    Y: Quick move    B: Back";
+            const s32 height=font->getDimension(L"A").Height+16;
+            core::rect<s32> bar(0,size.Height-height,size.Width,size.Height);
+            driver->draw2DRectangle(video::SColor(230,15,19,26),bar);
+            font->draw(hint,bar,video::SColor(255,255,255,255),true,true);
+        }
     }
 
 	skin->setFont(old_font);
@@ -4396,7 +4411,6 @@ bool GUIFormSpecMenu::preprocessEvent(const SEvent& event)
         if(event.EventType==EET_GAMEPAD_AXIS_EVENT) {
             const auto axis=event.GamepadAxisEvent.Axis;
             float v=event.GamepadAxisEvent.Value/32767.f;
-            v=std::abs(v)<0.22f ? 0.f : (v>0 ? (v-.22f)/.78f : (v+.22f)/.78f);
             if(axis==GamepadAxis::LEFTX) m_couch_x=v;
             if(axis==GamepadAxis::LEFTY) m_couch_y=v;
             return true;
@@ -4404,21 +4418,26 @@ bool GUIFormSpecMenu::preprocessEvent(const SEvent& event)
         if(event.EventType==EET_GAMEPAD_BUTTON_EVENT) {
             const auto b=event.GamepadButtonEvent.Button;
             const bool down=event.GamepadButtonEvent.PressedDown;
+            if(b>=GamepadButton::DPAD_UP && b<=GamepadButton::DPAD_RIGHT) {
+                const u32 flag=b==GamepadButton::DPAD_UP?1:b==GamepadButton::DPAD_DOWN?2:b==GamepadButton::DPAD_LEFT?4:8;
+                if(down) m_couch_dpad|=flag; else m_couch_dpad&=~flag;
+                return true;
+            }
             if(!m_couch_pointer) couchPointerStep();
-            if(b==GamepadButton::SOUTH || b==GamepadButton::WEST) {
-                const bool left=b==GamepadButton::SOUTH;
+            if(b==GamepadButton::SOUTH || b==GamepadButton::WEST || b==GamepadButton::NORTH) {
+                if(!m_couch_pointer) return true;
+                const bool left=b!=GamepadButton::WEST;
                 const u32 mask=left ? SDL_BUTTON_MASK(1) : SDL_BUTTON_MASK(3);
+                m_couch_shift=b==GamepadButton::NORTH;
                 if(down) m_couch_buttons|=mask; else m_couch_buttons&=~mask;
                 couchPointerEvent(left ? (down ? EMIE_LMOUSE_PRESSED_DOWN : EMIE_LMOUSE_LEFT_UP)
                     : (down ? EMIE_RMOUSE_PRESSED_DOWN : EMIE_RMOUSE_LEFT_UP));
-            } else if(down && (b==GamepadButton::EAST || b==GamepadButton::START || b==GamepadButton::BACK || b==GamepadButton::NORTH)) {
+                return true;
+            }
+            if(down && (b==GamepadButton::EAST || b==GamepadButton::START || b==GamepadButton::BACK)) {
                 SEvent key{};key.EventType=EET_KEY_INPUT_EVENT;key.KeyInput.Key=KEY_ESCAPE;
                 key.KeyInput.PressedDown=true;OnEvent(key);
-            } else if(down && b>=GamepadButton::DPAD_UP && b<=GamepadButton::DPAD_RIGHT) {
-                const int step=std::max(12,m_btn_height);
-                m_pointer.X+=(b==GamepadButton::DPAD_RIGHT ? step : b==GamepadButton::DPAD_LEFT ? -step : 0);
-                m_pointer.Y+=(b==GamepadButton::DPAD_DOWN ? step : b==GamepadButton::DPAD_UP ? -step : 0);
-                couchPointerEvent(EMIE_MOUSE_MOVED);
+                return true;
             }
             return true;
         }
@@ -5649,24 +5668,80 @@ double GUIFormSpecMenu::calculateImgsize(const parserData &data)
 	return std::min(prefer_imgsize, std::min(fitx_imgsize, fity_imgsize));
 }
 
+
+std::vector<core::rect<s32>> GUIFormSpecMenu::couchTargets()
+{
+    std::vector<core::rect<s32>> result;
+    for (auto *list : m_inventorylists) {
+        if (!list->isTrulyVisible()) continue;
+        auto slots = list->getControllerSlots();
+        result.insert(result.end(), slots.begin(), slots.end());
+    }
+    for (const auto &field : m_fields) {
+        auto *element = getElementFromId(field.fid, true);
+        if (!element || !element->isTrulyVisible() || !element->isEnabled()) continue;
+        if (field.ftype != f_Button && field.ftype != f_CheckBox &&
+            field.ftype != f_DropDown && field.ftype != f_ScrollBar &&
+            field.ftype != f_TabHeader && field.ftype != f_Table &&
+            element->getType() != gui::EGUIET_EDIT_BOX) continue;
+        auto rect = element->getAbsoluteClippingRect();
+        if (rect.getWidth() > 2 && rect.getHeight() > 2) result.push_back(rect);
+    }
+    std::stable_sort(result.begin(),result.end(),[](const auto &a,const auto &b) {
+        auto ac=a.getCenter(),bc=b.getCenter();
+        return ac.Y==bc.Y ? ac.X<bc.X : ac.Y<bc.Y;
+    });
+    return result;
+}
+
 void GUIFormSpecMenu::couchPointerEvent(EMOUSE_INPUT_EVENT kind) {
-    auto size=Environment->getVideoDriver()->getScreenSize();
-    m_pointer.X=std::clamp(m_pointer.X,0,static_cast<int>(size.Width)-1);
-    m_pointer.Y=std::clamp(m_pointer.Y,0,static_cast<int>(size.Height)-1);
     SEvent e{};e.EventType=EET_MOUSE_INPUT_EVENT;
     e.MouseInput.Event=kind;e.MouseInput.X=m_pointer.X;e.MouseInput.Y=m_pointer.Y;
     e.MouseInput.ButtonStates=m_couch_buttons;e.MouseInput.Simulated=true;
+    e.MouseInput.Shift=m_couch_shift;
     RenderingEngine::get_raw_device()->postEventFromUser(e);
 }
+void GUIFormSpecMenu::couchMoveFocus(int dx,int dy) {
+    auto targets=couchTargets();
+    if(targets.empty()) return;
+    std::vector<GameNightFocusPoint> points;
+    int current=-1;
+    for(size_t i=0;i<targets.size();++i) {
+        auto p=targets[i].getCenter();
+        points.push_back({static_cast<float>(p.X),static_cast<float>(p.Y)});
+        if(targets[i].isPointInside(m_pointer)) current=static_cast<int>(i);
+    }
+    int next=gamenightNextFocus(points,current,dx,dy);
+    m_pointer=targets[next].getCenter();
+    m_couch_focus=targets[next];m_couch_pointer=true;
+    couchPointerEvent(EMIE_MOUSE_MOVED);
+}
 void GUIFormSpecMenu::couchPointerStep() {
+    auto targets=couchTargets();
+    if(targets.empty()) {m_couch_pointer=false;return;}
+    bool matched=false;
+    if(m_couch_pointer) for(const auto &rect:targets) {
+        if(rect.isPointInside(m_pointer)) {m_couch_focus=rect;matched=true;break;}
+    }
+    if(!matched) {
+        m_pointer=targets.front().getCenter();m_couch_focus=targets.front();
+        m_couch_pointer=true;couchPointerEvent(EMIE_MOUSE_MOVED);
+    }
+    int dx=(m_couch_dpad&8 ? 1:0)-(m_couch_dpad&4 ? 1:0);
+    int dy=(m_couch_dpad&2 ? 1:0)-(m_couch_dpad&1 ? 1:0);
+    if(dx==0 && dy==0) {
+        if(std::abs(m_couch_x)>std::abs(m_couch_y)) dx=std::abs(m_couch_x)>.5f ? (m_couch_x>0?1:-1):0;
+        else dy=std::abs(m_couch_y)>.5f ? (m_couch_y>0?1:-1):0;
+    }
+    // No diagonal focus jumps; a held direction repeats after a deliberate delay.
+    if(dx) dy=0;
     const auto now=porting::getTimeMs();
-    if(!m_couch_pointer) {m_pointer=AbsoluteRect.getCenter();m_couch_pointer=true;m_couch_tick=now;}
-    const float dt=std::min(0.05f,(now-m_couch_tick)/1000.f);m_couch_tick=now;
-    // Accumulate subpixel motion so a small stick movement does not disappear.
-
-    const float speed=Environment->getVideoDriver()->getScreenSize().Height*.7f;
-    m_couch_remainder_x+=m_couch_x*dt*speed;m_couch_remainder_y+=m_couch_y*dt*speed;
-    int dx=static_cast<int>(m_couch_remainder_x),dy=static_cast<int>(m_couch_remainder_y);
-    m_couch_remainder_x-=dx;m_couch_remainder_y-=dy;
-    if(dx || dy) {m_pointer.X+=dx;m_pointer.Y+=dy;couchPointerEvent(EMIE_MOUSE_MOVED);}
+    if((dx || dy) && !m_couch_buttons) {
+        if(dx!=m_couch_last_x || dy!=m_couch_last_y) {
+            couchMoveFocus(dx,dy);m_couch_repeat=now+330;
+        } else if(now>=m_couch_repeat) {
+            couchMoveFocus(dx,dy);m_couch_repeat=now+115;
+        }
+    }
+    m_couch_last_x=dx;m_couch_last_y=dy;
 }

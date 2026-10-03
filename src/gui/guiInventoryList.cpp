@@ -285,3 +285,18 @@ s32 GUIInventoryList::getItemIndexAtPos(v2s32 p) const
 
 	return -1;
 }
+
+std::vector<core::rect<s32>> GUIInventoryList::getControllerSlots() const
+{
+    std::vector<core::rect<s32>> result;
+    if (!isTrulyVisible()) return result;
+    for (s32 i=0; i<m_geom.X*m_geom.Y; ++i) {
+        v2s32 offset((i%m_geom.X)*m_slot_spacing.X,(i/m_geom.X)*m_slot_spacing.Y);
+        core::rect<s32> rect(0,0,m_slot_size.X,m_slot_size.Y);
+        rect += AbsoluteRect.UpperLeftCorner + offset;
+        rect.clipAgainst(AbsoluteClippingRect);
+        if (rect.getWidth()>2 && rect.getHeight()>2 && getItemIndexAtPos(rect.getCenter())>=0)
+            result.push_back(rect);
+    }
+    return result;
+}
