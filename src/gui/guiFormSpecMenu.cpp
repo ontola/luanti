@@ -4425,13 +4425,20 @@ bool GUIFormSpecMenu::preprocessEvent(const SEvent& event)
             }
             if(!m_couch_pointer) couchPointerStep();
             if(b==GamepadButton::SOUTH || b==GamepadButton::WEST || b==GamepadButton::NORTH) {
-                if(!m_couch_pointer) return true;
+                if(!m_couch_pointer || !down) return true;
+                if (m_inventorylists.empty() && b != GamepadButton::SOUTH) return true;
                 const bool left=b!=GamepadButton::WEST;
                 const u32 mask=left ? SDL_BUTTON_MASK(1) : SDL_BUTTON_MASK(3);
+                // A pad action is one complete click, never a mouse drag.
+                // Retain this menu while a button may close it on release.
+                grab();
                 m_couch_shift=b==GamepadButton::NORTH;
-                if(down) m_couch_buttons|=mask; else m_couch_buttons&=~mask;
-                couchPointerEvent(left ? (down ? EMIE_LMOUSE_PRESSED_DOWN : EMIE_LMOUSE_LEFT_UP)
-                    : (down ? EMIE_RMOUSE_PRESSED_DOWN : EMIE_RMOUSE_LEFT_UP));
+                m_couch_buttons=mask;
+                couchPointerEvent(left ? EMIE_LMOUSE_PRESSED_DOWN : EMIE_RMOUSE_PRESSED_DOWN);
+                m_couch_buttons=0;
+                couchPointerEvent(left ? EMIE_LMOUSE_LEFT_UP : EMIE_RMOUSE_LEFT_UP);
+                m_couch_shift=false;
+                drop();
                 return true;
             }
             if(down && (b==GamepadButton::EAST || b==GamepadButton::START || b==GamepadButton::BACK)) {
@@ -5699,7 +5706,12 @@ void GUIFormSpecMenu::couchPointerEvent(EMOUSE_INPUT_EVENT kind) {
     e.MouseInput.Event=kind;e.MouseInput.X=m_pointer.X;e.MouseInput.Y=m_pointer.Y;
     e.MouseInput.ButtonStates=m_couch_buttons;e.MouseInput.Simulated=true;
     e.MouseInput.Shift=m_couch_shift;
-    RenderingEngine::get_raw_device()->postEventFromUser(e);
+    // Inventory press and release must reach the same formspec handler.
+    // Generic GUI dispatch may change focus between those two events.
+    if (kind != EMIE_MOUSE_MOVED && getItemAtPos(m_pointer).isValid())
+        OnEvent(e);
+    else
+        RenderingEngine::get_raw_device()->postEventFromUser(e);
 }
 void GUIFormSpecMenu::couchMoveFocus(int dx,int dy) {
     auto targets=couchTargets();
