@@ -259,6 +259,9 @@ public:
 	// This makes stuff happen
 	void step(f32 dtime);
 
+	// Finish disconnected object removal while GameNight freezes simulation.
+	void drainRemovedObjectsForPause() { removeRemovedObjects(); }
+
 	u32 getGameTime() const { return m_game_time; }
 
 	void reportMaxLagEstimate(float f) { m_max_lag_estimate = f; }

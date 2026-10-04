@@ -740,9 +740,14 @@ void Server::AsyncRunStep(float dtime, bool initial_step)
 		m_env->reportMaxLagEstimate(max_lag);
 
 		// Step environment
-		if(gamenightFramePath() && !gamenightHostFrame().active)
-            m_env->getScriptIface()->gamenight_Poll();
-        else m_env->step(dtime);
+		if (gamenightFramePath() && !gamenightHostFrame().active) {
+			// Saving/unlinking departed players is lifecycle work. If skipped,
+			// their accounts remain reserved until the simulation resumes.
+			m_env->drainRemovedObjectsForPause();
+			m_env->getScriptIface()->gamenight_Poll();
+		} else {
+			m_env->step(dtime);
+		}
 	}
 
 	static const float map_timer_and_unload_dtime = 2.92;
