@@ -1,5 +1,6 @@
 #include "gamenight_controller.h"
 #include "gamenight_capture.h"
+#include "gamenight_performance.h"
 // Luanti
 // SPDX-License-Identifier: LGPL-2.1-or-later
 // Copyright (C) 2010-2013 celeron55, Perttu Ahola <celeron55@gmail.com>
@@ -3727,6 +3728,7 @@ void Game::drawScene(ProfilerGraph *graph, RunStats *stats)
 	}
 
 	this->driver->endScene();
+    gamenightPerformanceFrame(screensize.X, screensize.Y);
     gamenightCaptureFrame(this->driver);
 
 	stats->drawtime = tt_draw.stop(true);
