@@ -5,6 +5,7 @@
 #ifdef _IRR_COMPILE_WITH_SDL_DEVICE_
 
 #include "CIrrDeviceSDL.h"
+#include "gamenight_layout.h"
 #include "IEventReceiver.h"
 #include "IGUIElement.h"
 #include "IGUIEnvironment.h"
@@ -766,12 +767,17 @@ bool CIrrDeviceSDL::createWindowWithContext()
 #ifndef _IRR_USE_SDL3_
     if(gamenightControllerMode()) {
         const char *seat=std::getenv("GAMENIGHT_COUCH_SEAT");
+        const char *count = std::getenv("GAMENIGHT_COUCH_PLAYERS");
+        const int players = count && count[0] >= '1' && count[0] <= '4' && !count[1]
+            ? count[0]-'0' : 2;
         SDL_Rect bounds;
-        if(seat && (*seat=='0' || *seat=='1') && SDL_GetDisplayBounds(0,&bounds)==0) {
+        if(seat && seat[0] >= '0' && seat[0] < '0'+players && !seat[1]
+                && SDL_GetDisplayBounds(0,&bounds)==0) {
+            const auto view = gamenightViewport(players, seat[0]-'0', bounds.w, bounds.h);
             SDL_SetWindowFullscreen(Window,0);
             SDL_SetWindowBordered(Window,SDL_FALSE);
-            SDL_SetWindowSize(Window,bounds.w/2,bounds.h);
-            SDL_SetWindowPosition(Window,bounds.x+(*seat-'0')*(bounds.w/2),bounds.y);
+            SDL_SetWindowSize(Window,view.width,view.height);
+            SDL_SetWindowPosition(Window,bounds.x+view.x,bounds.y+view.y);
         }
     }
 #endif
