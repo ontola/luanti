@@ -1,3 +1,4 @@
+#include "gamenight_controller.h"
 // Luanti
 // SPDX-License-Identifier: LGPL-2.1-or-later
 // Copyright (C) 2010-2013 celeron55, Perttu Ahola <celeron55@gmail.com>
@@ -37,7 +38,10 @@ void FpsControl::reset()
 
 void FpsControl::limit(IrrlichtDevice *device, f32 *dtime)
 {
-	const float fps_limit = device->isWindowFocused()
+	// Every active couch viewport is visible, although Windows focuses only one.
+	// Keep the reduced background cap when GameNight hides a paused session.
+	const bool couch_active = gamenightFramePath() && gamenightHostFrame().active;
+	const float fps_limit = (device->isWindowFocused() || couch_active)
 			? g_settings->getFloat("fps_max")
 			: g_settings->getFloat("fps_max_unfocused");
 	const u64 frametime_min = 1000000.0f / std::max(fps_limit, 1.0f);
