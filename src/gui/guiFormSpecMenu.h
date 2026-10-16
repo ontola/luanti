@@ -425,6 +425,10 @@ private:
     void couchMoveFocus(int dx,int dy);
     void couchPointerEvent(EMOUSE_INPUT_EVENT event);
     void couchPointerStep();
+    gui::IGUIElement *couchButton(const std::string &name);
+    bool couchAdjust(int direction, bool apply);
+    bool couchClickButton(const std::string &name);
+    bool m_couch_result_focused = false;
 
 	IFormSource               *m_form_src;
 	TextDest                  *m_text_dst;

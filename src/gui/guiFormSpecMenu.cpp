@@ -3927,13 +3927,40 @@ void GUIFormSpecMenu::drawMenu()
         auto size=driver->getScreenSize();
         auto *font=skin->getFont();
         if(font) {
-            const wchar_t *hint=m_inventorylists.empty()
-                ? L"D-pad / Stick: Navigate     A: Select     B: Back"
-                : L"D-pad / Stick: Navigate    A: Pick / Place    X: Split    Y: Quick move    B: Back";
-            const s32 height=font->getDimension(L"A").Height+16;
-            core::rect<s32> bar(0,size.Height-height,size.Width,size.Height);
-            driver->draw2DRectangle(video::SColor(230,15,19,26),bar);
-            font->draw(hint,bar,video::SColor(255,255,255,255),true,true);
+            std::vector<std::wstring> hints = {L"Stick / D-pad: Move"};
+            const auto item = getItemAtPos(m_pointer);
+            hints.push_back(item.listname == "craftpreview" ? L"A: Craft" :
+                    item.isValid() ? L"A: Pick / Place" : L"A: Select");
+            if (couchAdjust(1, false)) hints.push_back(L"LB / RB: Change value");
+            if (m_last_formname == "mcl_craftguide") {
+                hints.push_back(L"LB / RB: Pages");
+                if (couchButton("next_alternate")) hints.push_back(L"X: Other recipe");
+                if (couchButton("gamenight_prepare")) hints.push_back(L"Y: Prepare recipe");
+            } else if (!m_inventorylists.empty()) {
+                hints.push_back(L"X: Split / Place one");
+                hints.push_back(L"Y: Quick move");
+                if (couchButton("__mcl_craftguide")) hints.push_back(L"LB: Recipe book");
+            }
+            hints.push_back(L"B: Close");
+            hints.push_back(L"Back: Lobby");
+            // Wrap whole button labels instead of clipping one long line in
+            // narrow split-screen views. Use the formspec font and its metrics.
+            std::vector<std::wstring> lines;
+            std::wstring line;
+            for (const auto &hint : hints) {
+                auto candidate = line.empty() ? hint : line + L"    " + hint;
+                if (!line.empty() && font->getDimension(candidate.c_str()).Width > size.Width - 24) {
+                    lines.push_back(line); line = hint;
+                } else line = candidate;
+            }
+            if (!line.empty()) lines.push_back(line);
+            const s32 row = font->getDimension(L"A").Height + 10;
+            const s32 top = static_cast<s32>(size.Height) - row * lines.size() - 12;
+            driver->draw2DRectangle(video::SColor(240,15,19,26),
+                    core::rect<s32>(0,top,size.Width,size.Height));
+            for (size_t i=0; i<lines.size(); ++i)
+                font->draw(lines[i].c_str(), core::rect<s32>(12,top+6+i*row,
+                        size.Width-12,top+6+(i+1)*row),video::SColor(255,255,255,255),true,true);
         }
     }
 
@@ -4422,6 +4449,16 @@ bool GUIFormSpecMenu::preprocessEvent(const SEvent& event)
                 const u32 flag=b==GamepadButton::DPAD_UP?1:b==GamepadButton::DPAD_DOWN?2:b==GamepadButton::DPAD_LEFT?4:8;
                 if(down) m_couch_dpad|=flag; else m_couch_dpad&=~flag;
                 return true;
+            }
+            if (down) {
+                if ((b == GamepadButton::LEFT_SHOULDER || b == GamepadButton::RIGHT_SHOULDER) &&
+                        couchAdjust(b == GamepadButton::LEFT_SHOULDER ? -1 : 1, true)) return true;
+                const bool recipes = m_last_formname == "mcl_craftguide";
+                if (b == GamepadButton::LEFT_SHOULDER &&
+                        couchClickButton(recipes ? "prev" : "__mcl_craftguide")) return true;
+                if (recipes && b == GamepadButton::RIGHT_SHOULDER && couchClickButton("next")) return true;
+                if (recipes && b == GamepadButton::WEST && couchClickButton("next_alternate")) return true;
+                if (recipes && b == GamepadButton::NORTH && couchClickButton("gamenight_prepare")) return true;
             }
             if(!m_couch_pointer) couchPointerStep();
             if(b==GamepadButton::SOUTH || b==GamepadButton::WEST || b==GamepadButton::NORTH) {
@@ -5701,6 +5738,51 @@ std::vector<core::rect<s32>> GUIFormSpecMenu::couchTargets()
     return result;
 }
 
+gui::IGUIElement *GUIFormSpecMenu::couchButton(const std::string &name) {
+    for (const auto &field : m_fields) {
+        if (field.fname != name || field.ftype != f_Button) continue;
+        auto *element = getElementFromId(field.fid, true);
+        if (element && element->isTrulyVisible() && element->isEnabled()) return element;
+    }
+    return nullptr;
+}
+bool GUIFormSpecMenu::couchAdjust(int direction, bool apply) {
+    for (const auto &field : m_fields) {
+        auto *element = getElementFromId(field.fid, true);
+        if (!element || !element->isTrulyVisible() || !element->isEnabled() ||
+                !element->getAbsoluteClippingRect().isPointInside(m_pointer)) continue;
+        if (field.ftype == f_DropDown) {
+            auto *combo = static_cast<gui::IGUIComboBox *>(element);
+            const int count = combo->getItemCount();
+            if (apply && count) {
+                grab(); combo->setAndSendSelected((combo->getSelected()+direction+count)%count); drop();
+            }
+            return true;
+        }
+        if (field.ftype == f_TabHeader) {
+            auto *tabs = static_cast<gui::IGUITabControl *>(element);
+            const int count = tabs->getTabCount();
+            if (apply && count) {
+                grab(); tabs->setActiveTab((tabs->getActiveTab()+direction+count)%count); drop();
+            }
+            return true;
+        }
+    }
+    return false;
+}
+bool GUIFormSpecMenu::couchClickButton(const std::string &name) {
+    auto *element = couchButton(name);
+    if (!element || m_selected_item) return false;
+    grab();
+    m_pointer = element->getAbsoluteClippingRect().getCenter();
+    m_couch_buttons = SDL_BUTTON_MASK(1);
+    couchPointerEvent(EMIE_LMOUSE_PRESSED_DOWN);
+    m_couch_buttons = 0;
+    couchPointerEvent(EMIE_LMOUSE_LEFT_UP);
+    drop();
+    return true;
+}
+
 void GUIFormSpecMenu::couchPointerEvent(EMOUSE_INPUT_EVENT kind) {
     SEvent e{};e.EventType=EET_MOUSE_INPUT_EVENT;
     e.MouseInput.Event=kind;e.MouseInput.X=m_pointer.X;e.MouseInput.Y=m_pointer.Y;
@@ -5745,6 +5827,22 @@ void GUIFormSpecMenu::couchPointerStep() {
         }
         m_pointer=m_couch_focus.getCenter();
         m_couch_pointer=true;couchPointerEvent(EMIE_MOUSE_MOVED);
+    }
+    bool prepared = false;
+    for (const auto &field : m_fields)
+        if (field.fname == "gamenight_craft_result") prepared = true;
+    if (!prepared) m_couch_result_focused = false;
+    if (prepared && !m_couch_result_focused) {
+        for (auto *list : m_inventorylists) {
+            if (!list->isTrulyVisible() || list->getListname() != "craftpreview") continue;
+            auto *inv = m_invmgr->getInventory(list->getInventoryloc());
+            auto *preview = inv ? inv->getList("craftpreview") : nullptr;
+            auto slots = list->getControllerSlots();
+            if (!preview || preview->getSize() == 0 || preview->getItem(0).empty() || slots.empty()) continue;
+            m_couch_focus = slots.front(); m_pointer = m_couch_focus.getCenter();
+            m_couch_result_focused = true;
+            couchPointerEvent(EMIE_MOUSE_MOVED);
+        }
     }
     int dx=(m_couch_dpad&8 ? 1:0)-(m_couch_dpad&4 ? 1:0);
     int dy=(m_couch_dpad&2 ? 1:0)-(m_couch_dpad&1 ? 1:0);

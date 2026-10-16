@@ -9,7 +9,10 @@ The `gamenight-couch` branch is based on upstream Luanti 5.17.0
 - Two Windows clients in borderless side-by-side views.
 - Independent controller binding, neutral-state arming, and hotplug handling.
 - Host-routed controller frames with freshness checks and background camera input.
-- Directional D-pad/stick focus for menus and inventory, with A/B actions.
+- Directional D-pad/stick focus for menus and inventory, with wrapped button hints.
+- LB/RB adjust a focused dropdown or tab. LB opens Mineclonia recipes; in the
+  recipe book LB/RB turn pages, X cycles recipes, Y prepares and A crafts from
+  the focused result. The adapter supplies the material/table validation.
 - Shared pause support for the local world and hidden/muted client views.
 - Window grouping that yields when the user switches to another application.
 
