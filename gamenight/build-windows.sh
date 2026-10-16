@@ -16,6 +16,8 @@ c++ -std=c++17 -I"$source/irr/include" "$source/gamenight/test_navigation.cpp" -
 "$cache/test-navigation"
 c++ -std=c++17 -I"$source/irr/include" "$source/gamenight/test_layout.cpp" -o "$cache/test-layout"
 "$cache/test-layout"
+c++ -std=c++17 -I"$source/irr/include" "$source/gamenight/test_focus.cpp" -o "$cache/test-focus"
+"$cache/test-focus"
 mkdir -p "$cache/toolchain"
 bash "$source/util/buildbot/download_toolchain.sh" "$cache/toolchain"
 export PATH="$cache/toolchain/bin:$PATH"

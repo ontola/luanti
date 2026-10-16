@@ -1,3 +1,4 @@
+#include "gamenight_focus.h"
 // Copyright (C) 2002-2012 Nikolaus Gebhardt
 // This file is part of the "Irrlicht Engine".
 // For conditions of distribution and use, see copyright notice in irrlicht.h
@@ -330,6 +331,7 @@ private:
 	void couchHostStep();
 	GameNightHostFrame couchPrevious;
 	bool couchVisible=false, couchArmed=false;
+	GameNightFocusHandoff couchFocusHandoff;
 	void couchRelease(SDL_JoystickID id);
 #ifdef _IRR_USE_SDL3
 	SDL_JoystickID recentGamepadID = -1;

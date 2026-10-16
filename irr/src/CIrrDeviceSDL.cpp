@@ -1728,29 +1728,49 @@ void CIrrDeviceSDL::CCursorControl::initCursors()
 void CIrrDeviceSDL::couchHostStep() {
 #ifndef _IRR_USE_SDL3_
     auto frame=gamenightHostFrame();
-    if(frame.active!=couchVisible) {
-        couchVisible=frame.active;couchArmed=false;
-        if(couchVisible) {SDL_ShowWindow(Window);SDL_RaiseWindow(Window);}
-        else SDL_HideWindow(Window);
-    }
 #ifdef _WIN32
-    // Two tiled borderless views cover the complete monitor together. Keep
-    // both above the taskbar only while a member of this owned pair has focus.
-    // Alt-Tab and Back release them; never pin the game above other apps.
     static Uint32 focusCheck=0;
-    static bool above=false;
-    if(SDL_GetTicks()>=focusCheck) {
+    static bool owned=false;
+    if(frame.active!=couchVisible || SDL_TICKS_PASSED(SDL_GetTicks(), focusCheck)) {
         focusCheck=SDL_GetTicks()+100;
         DWORD foreground=0;
         GetWindowThreadProcessId(GetForegroundWindow(), &foreground);
-        bool owned=false;
+        owned=false;
         if(const char *group=std::getenv("GAMENIGHT_COUCH_GROUP")) {
             std::ifstream file(group); unsigned long pid;
             while(file>>pid) if(pid==foreground) owned=true;
         }
-        bool desired=frame.active && owned;
-        if(desired!=above) {above=desired;SDL_SetWindowAlwaysOnTop(Window,above?SDL_TRUE:SDL_FALSE);}
     }
+    LASTINPUTINFO input{};
+    input.cbSize=sizeof(input);
+    GetLastInputInfo(&input);
+#endif
+    if(frame.active!=couchVisible) {
+        couchVisible=frame.active;couchArmed=false;
+        if(couchVisible) {
+#ifdef _WIN32
+            couchFocusHandoff.begin(SDL_GetTicks(), input.dwTime);
+#endif
+            SDL_ShowWindow(Window);SDL_RaiseWindow(Window);
+        } else {
+            couchFocusHandoff.cancel();
+#ifdef _WIN32
+            // Hand Back to the lobby before our focused viewport disappears.
+            if(owned) AllowSetForegroundWindow(ASFW_ANY);
+#endif
+            SDL_HideWindow(Window);
+        }
+    }
+#ifdef _WIN32
+    // Resume and the lobby's foreground grant arrive on separate sockets.
+    // A single raise can lose that race; stop retrying as soon as either
+    // viewport has focus or the user deliberately switches desktop apps.
+    if(couchFocusHandoff.retry(SDL_GetTicks(), input.dwTime, owned))
+        SDL_RaiseWindow(Window);
+    // Both borderless views cover the monitor only while our group has focus.
+    static bool above=false;
+    bool desired=frame.active && owned;
+    if(desired!=above) {above=desired;SDL_SetWindowAlwaysOnTop(Window,above?SDL_TRUE:SDL_FALSE);}
 #endif
     // Back belongs to the resident lobby. Never echo its request or open Luanti's menu.
     frame.buttons &= ~(1u<<6);
